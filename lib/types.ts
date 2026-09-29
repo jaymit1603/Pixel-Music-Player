@@ -1,0 +1,1 @@
+export type Track={id:string;title:string;artist:string;album:string|null;cover_url:string|null;audio_url:string;duration_seconds:number;genre:string|null};export type Playlist={id:string;user_id:string;name:string;description:string|null;cover_url:string|null;is_public:boolean};
