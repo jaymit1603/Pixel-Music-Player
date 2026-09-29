@@ -1,6 +1,6 @@
 'use client';
 import{FormEvent,useState}from'react';
-import{createClient}from'@/lib/supabase/client';
+import{createClient}from'../../lib/supabase/client';
 import{Disc3,LogIn,UserPlus,ArrowLeft}from'lucide-react';
 import Link from'next/link';
 
