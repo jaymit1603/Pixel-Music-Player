@@ -1,2 +1,2 @@
-import{NextRequest,NextResponse}from'next/server';import{createClient}from'@/lib/supabase/server';
+import{NextRequest,NextResponse}from'next/server';import{createClient}from'../../../lib/supabase/server';
 export async function POST(req:NextRequest){const s=await createClient();if(!s)return NextResponse.json({demo:true});const{data:{user}}=await s.auth.getUser();if(!user)return NextResponse.json({error:'Sign in required'},{status:401});const{trackId,progressSeconds=0}=await req.json();const{error}=await s.from('play_history').insert({user_id:user.id,track_id:trackId,progress_seconds:progressSeconds});if(error)return NextResponse.json({error:error.message},{status:500});return NextResponse.json({ok:true})}
