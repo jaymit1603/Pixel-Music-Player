@@ -1,26 +1,33 @@
 # 🎵 Pixel Music Player
 
-A full-stack, retro-futuristic music platform inspired by the interaction patterns of modern streaming players.
+A full-stack, retro-futuristic music platform built with Next.js, React, TypeScript and Supabase.
 
-## Current build
+## What is working
 
 - Modern Pixel/neon music dashboard
-- Real HTML5 audio engine
+- HTML5 audio player
 - Local audio import for instant demo playback
-- Search and responsive navigation
-- Shuffle, repeat, seek and volume
-- Likes, playlists and listening history database schema
-- Supabase authentication foundation
-- Server-side session handling
 - Search API
+- Responsive navigation
+- Shuffle, repeat, seek and volume
+- Supabase authentication foundation
+- Persistent likes API
+- Listening-history API
+- Playlist API
+- Postgres schema for users, tracks, playlists, likes and history
 - Row Level Security policies
 - Demo mode when Supabase variables are not configured
 
 ## Stack
 
-Next.js App Router + React + TypeScript + Supabase Postgres/Auth.
-
-Next.js is used as the full-stack application framework. citeturn0search2 Supabase provides Postgres, Auth and row-level access control; its current Next.js guidance uses cookie-based SSR sessions with `@supabase/ssr`. citeturn0search0turn0search3
+- Next.js App Router
+- React
+- TypeScript
+- Supabase Auth
+- Supabase Postgres
+- Supabase SSR
+- HTML5 Audio API
+- Lucide React
 
 ## Run locally
 
@@ -29,47 +36,118 @@ npm install
 npm run dev
 ```
 
-Without Supabase environment variables, the UI remains in demo mode.
+Open http://localhost:3000.
 
-## Enable cloud accounts + library
+The app still has a usable demo/local mode without a Supabase project.
+
+## Enable accounts and cloud data
 
 1. Create a Supabase project.
 2. Copy `.env.example` to `.env.local`.
-3. Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
+3. Add your Supabase project URL and publishable key.
 4. Run `supabase/schema.sql` in the Supabase SQL editor.
-5. Start the app.
+5. Run the app with `npm run dev`.
+6. Open `/auth` to create an account.
 
-Supabase's current Next.js quickstart uses these environment variables and the App Router. citeturn0search4
+### Environment
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=your-project-url
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+```
+
+Do not commit real credentials.
 
 ## Architecture
 
 ```text
-Browser
-  │
-  ├── Next.js UI + Audio API
-  │
-  ├── /api/search
-  │
-  └── Supabase SSR client
-          │
-          ├── Auth
-          ├── Postgres
-          └── Row Level Security
+Pixel Music Player
+│
+├── Next.js App Router
+│   ├── Music UI
+│   ├── Audio engine
+│   └── API routes
+│
+├── Supabase
+│   ├── Auth
+│   ├── PostgreSQL
+│   └── Row Level Security
+│
+└── Music storage/catalog
+    ├── Track metadata
+    ├── Cover artwork
+    └── Authorized audio URLs
 ```
 
-## Music rights
+## API
 
-Pixel Music Player should only stream audio that you own, have licensed, or are otherwise authorized to distribute. Do not scrape or proxy copyrighted catalogs without permission.
+### Search
+
+`GET /api/search?q=...`
+
+### Likes
+
+`POST /api/likes`
+
+Body:
+
+```json
+{ "trackId": "UUID", "liked": true }
+```
+
+### History
+
+`POST /api/history`
+
+Body:
+
+```json
+{ "trackId": "UUID", "progressSeconds": 42 }
+```
+
+### Playlists
+
+`GET /api/playlists`
+
+`POST /api/playlists`
+
+Body:
+
+```json
+{ "name": "Late Night", "description": "Night drive tracks", "isPublic": false }
+```
+
+## Music catalog
+
+The database is designed so Pixel can eventually support a real cloud catalog. Add only audio you own, have licensed, or are otherwise authorized to distribute.
 
 ## Roadmap
 
-- [ ] Full playlist CRUD UI
-- [ ] Cloud music upload/storage
-- [ ] Album/artist pages
+- [x] Player UI
+- [x] Local playback
+- [x] Search foundation
+- [x] Authentication foundation
+- [x] Likes API
+- [x] History API
+- [x] Playlist API
+- [x] Database + RLS
+- [ ] Full playlist UI
+- [ ] Cloud music uploads
+- [ ] Album and artist pages
 - [ ] Home recommendations
 - [ ] Persistent queue
-- [ ] Listening-history UI
-- [ ] Lyrics integration
+- [ ] Recently played page
+- [ ] Lyrics
 - [ ] PWA/install support
-- [ ] Offline caching for authorized media
-- [ ] Admin catalog management
+- [ ] Offline playback for authorized media
+- [ ] Admin catalog dashboard
+
+## Design
+
+The visual direction combines Pixel's retro identity with modern streaming-player interaction patterns. The Dribbble reference supplied for the project is used as design inspiration, not as copied assets.
+
+## Author
+
+**Jay Mistry**
+
+GitHub: https://github.com/jaymit1603
