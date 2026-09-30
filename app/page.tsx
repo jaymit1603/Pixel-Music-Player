@@ -121,6 +121,8 @@ export default function HomePage() {
         event.preventDefault();
         togglePlay();
       }
+      if (event.altKey && event.key === 'ArrowRight') next();
+      if (event.altKey && event.key === 'ArrowLeft') prev();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
