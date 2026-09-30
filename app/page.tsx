@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Disc3, Heart, Home, Library, ListMusic, MoreHorizontal, Pause, Play,
   Repeat2, Search, Shuffle, SkipBack, SkipForward, Upload, Volume2, VolumeX,
@@ -379,7 +379,7 @@ export default function HomePage() {
     if (audio.current && duration) audio.current.currentTime = value;
   };
 
-  const handleYouTubeState = (state: number) => {
+  const handleYouTubeState = useCallback((state: number) => {
     const yt = window.YT;
     if (!yt) return;
     if (state === yt.PlayerState.PLAYING) {
@@ -387,9 +387,9 @@ export default function HomePage() {
     } else if (state === yt.PlayerState.PAUSED || state === yt.PlayerState.ENDED) {
       setPlaying(false);
     }
-  };
+  }, []);
 
-  const handleYouTubeError = (code: number) => {
+  const handleYouTubeError = useCallback((code: number) => {
     setPlaying(false);
     const message = code === 101 || code === 150
       ? 'This YouTube video cannot be played here'
@@ -397,12 +397,12 @@ export default function HomePage() {
         ? 'YouTube could not verify this player'
         : 'This YouTube video could not be played';
     showToast(message);
-  };
+  }, []);
 
-  const handleYouTubeAutoplayBlocked = () => {
+  const handleYouTubeAutoplayBlocked = useCallback(() => {
     setPlaying(false);
     showToast('Browser blocked autoplay — press PLAY');
-  };
+  }, []);
 
   const importMusic = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
