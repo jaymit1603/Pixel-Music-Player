@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Disc3, Heart, Home, Library, ListMusic, MoreHorizontal, Pause, Play,
   Repeat2, Search, Shuffle, SkipBack, SkipForward, Upload, Volume2, VolumeX,
-  X, Music2
+  X, Music2, Sparkles
 } from 'lucide-react';
 
 type Track = {
@@ -27,12 +27,14 @@ const demoTracks: Track[] = [
   { id: 6, title: 'After Midnight', artist: 'Nova.exe', album: 'Afterglow', duration: '4:31', accent: '#ff7b54' },
 ];
 
-function Cover({ track, size = 'large' }: { track: Track; size?: 'large' | 'small' }) {
+function Cover({ track, size = 'large', playing = false }: { track: Track; size?: 'large' | 'small'; playing?: boolean }) {
   return (
-    <div className={`cover ${size}`} style={{ '--accent': track.accent } as React.CSSProperties}>
+    <div className={`cover ${size} ${playing ? 'is-playing' : ''}`} style={{ '--accent': track.accent } as React.CSSProperties}>
       <div className="cover-glow" />
       <div className="cover-grid" />
-      <Disc3 />
+      <div className="cover-ring ring-a" />
+      <div className="cover-ring ring-b" />
+      <Disc3 className="cover-disc" />
       <span>{track.id.toString().padStart(2, '0')}</span>
     </div>
   );
@@ -58,6 +60,7 @@ export default function HomePage() {
   const [shuffle, setShuffle] = useState(false);
   const [toast, setToast] = useState('');
   const [mobileLibrary, setMobileLibrary] = useState(false);
+  const [visualizerSeed, setVisualizerSeed] = useState(0);
 
   const track = tracks[current];
 
@@ -69,6 +72,12 @@ export default function HomePage() {
   useEffect(() => {
     if (audio.current) audio.current.volume = volume / 100;
   }, [volume]);
+
+  useEffect(() => {
+    if (!playing) return;
+    const timer = window.setInterval(() => setVisualizerSeed(v => v + 1), 150);
+    return () => window.clearInterval(timer);
+  }, [playing]);
 
   useEffect(() => {
     const el = audio.current;
@@ -85,11 +94,20 @@ export default function HomePage() {
     };
     el.addEventListener('timeupdate', onTime);
     el.addEventListener('loadedmetadata', onLoaded);
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    const onError = () => { setPlaying(false); showToast('This audio file could not be played'); };
     el.addEventListener('ended', onEnded);
+    el.addEventListener('play', onPlay);
+    el.addEventListener('pause', onPause);
+    el.addEventListener('error', onError);
     return () => {
       el.removeEventListener('timeupdate', onTime);
       el.removeEventListener('loadedmetadata', onLoaded);
       el.removeEventListener('ended', onEnded);
+      el.removeEventListener('play', onPlay);
+      el.removeEventListener('pause', onPause);
+      el.removeEventListener('error', onError);
     };
   }, [repeat, current]);
 
@@ -123,17 +141,22 @@ export default function HomePage() {
   const playTrack = async (index = current) => {
     const selected = tracks[index];
     setCurrent(index);
-    if (!selected.src || !audio.current) {
+    if (!selected?.src || !audio.current) {
       showToast('Import an audio file to start playback');
       setPlaying(false);
       return;
     }
-    if (audio.current.src !== selected.src) {
-      audio.current.src = selected.src;
-      audio.current.load();
+    try {
+      if (audio.current.src !== selected.src) {
+        audio.current.src = selected.src;
+        audio.current.load();
+      }
+      await audio.current.play();
+      setPlaying(true);
+    } catch {
+      setPlaying(false);
+      showToast('Playback was blocked by the browser');
     }
-    await audio.current.play();
-    setPlaying(true);
   };
 
   const togglePlay = async () => {
@@ -220,23 +243,30 @@ export default function HomePage() {
               <label className="search"><Search /><input placeholder="Search your music..." value={query} onChange={e => setQuery(e.target.value)} /><kbd>⌘ K</kbd></label>
             </div>
 
-            <div className="hero">
-              <div className="now"><div className="eq"><i /><i /><i /><i /><i /></div><span>{playing ? 'PLAYING NOW' : 'READY TO PLAY'}</span></div>
+            <div className={`hero ${playing ? 'playing' : ''}`}>
+              <div className="hero-scanline" />
+              <div className="now"><div className="eq">{Array.from({ length: 5 }, (_, i) => <i key={i} />)}</div><span>{playing ? 'PLAYING NOW' : 'READY TO PLAY'}</span>{playing && <Sparkles className="now-spark" />}</div>
               <div className="hero-main">
-                <div className="art-wrap"><Cover track={track} /></div>
+                <div className="art-wrap"><Cover track={track} playing={playing} /></div>
                 <div className="meta">
                   <div className="tag"># {track.album.toUpperCase()}</div><h3>{track.title}</h3><p>{track.artist}</p>
                   <div className="hero-actions"><button className={`icon ${liked ? 'liked' : ''}`} onClick={() => setLiked(!liked)} aria-label="Like"><Heart fill={liked ? 'currentColor' : 'none'} /></button><button className="pixel-btn" onClick={togglePlay}>{playing ? <Pause fill="currentColor" /> : <Play fill="currentColor" />} {playing ? 'PAUSE' : 'PLAY'}</button><button className="icon" aria-label="More"><MoreHorizontal /></button></div>
                 </div>
               </div>
-              <div className="wave">{Array.from({ length: 64 }, (_, i) => <i key={i} style={{ height: `${10 + ((i * 17) % 45)}px` }} />)}</div>
+              <div className={`wave ${playing ? 'wave-playing' : ''}`}>
+                {Array.from({ length: 72 }, (_, i) => {
+                  const base = 14 + ((i * 19) % 34);
+                  const motion = playing ? 12 * Math.abs(Math.sin((i + visualizerSeed) * 0.52)) : 0;
+                  return <i key={i} style={{ height: Math.round(base + motion) }} />;
+                })}
+              </div>
             </div>
 
             <div className="section-head"><h3>UP NEXT</h3><span>{filtered.length} TRACKS</span></div>
             <div className="track-list">
-              {filtered.map(t => {
+              {filtered.map((t, row) => {
                 const index = tracks.findIndex(x => x.id === t.id);
-                return <button className={`track ${t.id === track.id ? 'selected' : ''}`} key={t.id} onClick={() => select(index)}><Cover track={t} size="small" /><div className="track-info"><strong>{t.title}</strong><span>{t.artist}</span></div><span className="album">{t.album}</span><span className="time">{t.duration}</span><span className="more">•••</span></button>;
+                return <button className={`track ${t.id === track.id ? 'selected' : ''}`} style={{ '--row': row } as React.CSSProperties} key={t.id} onClick={() => select(index)}><Cover track={t} size="small" playing={t.id === track.id && playing} /><div className="track-info"><strong>{t.title}</strong><span>{t.artist}</span></div><span className="album">{t.album}</span><span className="time">{t.duration}</span><span className="more">•••</span></button>;
               })}
               {!filtered.length && <div className="empty"><Music2 /> No tracks found</div>}
             </div>
@@ -244,7 +274,7 @@ export default function HomePage() {
         </div>
 
         <footer>
-          <div className="footer-track"><Cover track={track} size="small" /><div><strong>{track.title}</strong><span>{track.artist}</span></div><button onClick={() => setLiked(!liked)} className={liked ? 'liked' : ''}><Heart fill={liked ? 'currentColor' : 'none'} /></button></div>
+          <div className="footer-track"><Cover track={track} size="small" playing={playing} /><div><strong>{track.title}</strong><span>{track.artist}</span></div><button onClick={() => setLiked(!liked)} className={liked ? 'liked' : ''}><Heart fill={liked ? 'currentColor' : 'none'} /></button></div>
           <div className="controls"><div className="control-buttons"><button className={shuffle ? 'active-control' : ''} onClick={() => setShuffle(!shuffle)}><Shuffle /></button><button onClick={prev}><SkipBack fill="currentColor" /></button><button className="play" onClick={togglePlay}>{playing ? <Pause fill="currentColor" /> : <Play fill="currentColor" />}</button><button onClick={next}><SkipForward fill="currentColor" /></button><button className={repeat ? 'active-control' : ''} onClick={() => setRepeat(!repeat)}><Repeat2 /></button></div><div className="progress"><span>{formatTime(progress)}</span><input type="range" min="0" max={duration || 100} value={Math.min(progress, duration || 100)} onChange={e => seek(+e.target.value)} /><span>{duration ? formatTime(duration) : track.duration}</span></div></div>
           <div className="volume"><button onClick={() => setVolume(volume ? 0 : 72)}>{volume ? <Volume2 /> : <VolumeX />}</button><input type="range" min="0" max="100" value={volume} onChange={e => setVolume(+e.target.value)} /></div>
         </footer>
