@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 
 type Track = {
-  id: number;
+  id: number | string;
   title: string;
   artist: string;
   album: string;
@@ -16,6 +16,9 @@ type Track = {
   accent: string;
   src?: string;
   file?: File;
+  videoId?: string;
+  youtubeUrl?: string;
+  thumbnail?: string;
 };
 
 const demoTracks: Track[] = [
@@ -133,6 +136,39 @@ export default function HomePage() {
     window.setTimeout(() => setToast(''), 2200);
   };
 
+  const searchYouTube = async () => {
+    const q = query.trim();
+    if (!q) {
+      showToast('Type a song, artist, or album first');
+      return;
+    }
+
+    showToast('Searching YouTube...');
+    try {
+      const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(q)}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        showToast(data?.error ?? 'YouTube search failed');
+        return;
+      }
+
+      const results = Array.isArray(data.tracks) ? data.tracks as Track[] : [];
+      setTracks(results);
+      setCurrent(0);
+      setProgress(0);
+      setDuration(0);
+
+      if (!results.length) {
+        showToast('No YouTube results found');
+      } else {
+        showToast(`${results.length} YouTube results loaded`);
+      }
+    } catch {
+      showToast('Could not connect to YouTube search');
+    }
+  };
+
   const select = (index: number) => {
     setCurrent(index);
     setProgress(0);
@@ -143,6 +179,13 @@ export default function HomePage() {
   const playTrack = async (index = current) => {
     const selected = tracks[index];
     setCurrent(index);
+    if (selected?.videoId && selected.youtubeUrl) {
+      setPlaying(false);
+      window.open(selected.youtubeUrl, '_blank', 'noopener,noreferrer');
+      showToast('Opening the selected track on YouTube');
+      return;
+    }
+
     if (!selected?.src || !audio.current) {
       showToast('Import an audio file to start playback');
       setPlaying(false);
@@ -242,7 +285,7 @@ export default function HomePage() {
           <section className="content">
             <div className="topbar-content">
               <div><p className="eyebrow">YOUR SPACE</p><h2>Good evening<span>.</span></h2></div>
-              <label className="search"><Search /><input placeholder="Search your music..." value={query} onChange={e => setQuery(e.target.value)} /><kbd>⌘ K</kbd></label>
+              <label className="search"><Search /><input placeholder="Search your music..." value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void searchYouTube(); } }} /><kbd>⌘ K</kbd></label>
             </div>
 
             <div className={`hero ${playing ? 'playing' : ''}`}>
