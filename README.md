@@ -161,6 +161,10 @@ For an official YouTube integration, use the Google/YouTube developer APIs with 
 
 The requested `share.google` short link could not be resolved to a specific API document from the public web index, so no third-party key was copied from it. `share.google` is a Google-owned URL-shortening/redirect domain. citeturn806417search0turn806417search1
 
+## YouTube playback controls
+
+YouTube search results now play through the official YouTube IFrame Player API. The Pixel controls are connected to play/pause, progress, seeking, volume, previous/next, repeat, and shuffle. Search results also load duration metadata and filter out videos reported as non-embeddable.
+
 ## Known integration gaps
 
 The next backend phase should connect the existing player UI to:
