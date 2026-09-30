@@ -48,6 +48,123 @@ function formatTime(seconds: number) {
   return `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
 }
 
+type YouTubePlayerLike = {
+  playVideo: () => void;
+  pauseVideo: () => void;
+  destroy: () => void;
+  setVolume: (volume: number) => void;
+};
+
+type YouTubeApi = {
+  Player: new (
+    element: HTMLElement,
+    options: {
+      width: number;
+      height: number;
+      videoId: string;
+      playerVars?: Record<string, number | string>;
+      events?: {
+        onReady?: (event: { target: YouTubePlayerLike }) => void;
+        onStateChange?: (event: { data: number }) => void;
+        onError?: (event: { data: number }) => void;
+        onAutoplayBlocked?: () => void;
+      };
+    }
+  ) => YouTubePlayerLike;
+  PlayerState: { PLAYING: number; PAUSED: number; ENDED: number; BUFFERING: number };
+};
+
+declare global {
+  interface Window {
+    YT?: YouTubeApi;
+    onYouTubeIframeAPIReady?: () => void;
+  }
+}
+
+function YouTubeEmbed({
+  videoId,
+  playerRef,
+  onStateChange,
+  onError,
+  onAutoplayBlocked,
+}: {
+  videoId: string;
+  playerRef: React.MutableRefObject<YouTubePlayerLike | null>;
+  onStateChange: (state: number) => void;
+  onError: (code: number) => void;
+  onAutoplayBlocked: () => void;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [apiReady, setApiReady] = useState(Boolean(typeof window !== 'undefined' && window.YT));
+
+  useEffect(() => {
+    if (window.YT) {
+      setApiReady(true);
+      return;
+    }
+
+    const previousReady = window.onYouTubeIframeAPIReady;
+    const handleReady = () => {
+      previousReady?.();
+      setApiReady(true);
+    };
+
+    window.onYouTubeIframeAPIReady = handleReady;
+
+    if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+      const script = document.createElement('script');
+      script.src = 'https://www.youtube.com/iframe_api';
+      script.async = true;
+      document.head.appendChild(script);
+    }
+
+    return () => {
+      if (window.onYouTubeIframeAPIReady === handleReady) {
+        window.onYouTubeIframeAPIReady = previousReady;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!apiReady || !window.YT || !containerRef.current) return;
+
+    playerRef.current?.destroy();
+    playerRef.current = null;
+    containerRef.current.innerHTML = '';
+
+    const player = new window.YT.Player(containerRef.current, {
+      width: 240,
+      height: 200,
+      videoId,
+      playerVars: {
+        autoplay: 1,
+        controls: 1,
+        playsinline: 1,
+        origin: window.location.origin,
+      },
+      events: {
+        onReady: event => {
+          playerRef.current = event.target;
+          event.target.setVolume(72);
+          event.target.playVideo();
+        },
+        onStateChange: event => onStateChange(event.data),
+        onError: event => onError(event.data),
+        onAutoplayBlocked,
+      },
+    });
+
+    playerRef.current = player;
+
+    return () => {
+      playerRef.current?.destroy();
+      playerRef.current = null;
+    };
+  }, [apiReady, videoId, onStateChange, onError, onAutoplayBlocked, playerRef]);
+
+  return <div ref={containerRef} className="youtube-player" aria-label="YouTube player" />;
+}
+
 export default function HomePage() {
   const audio = useRef<HTMLAudioElement | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
@@ -64,6 +181,7 @@ export default function HomePage() {
   const [toast, setToast] = useState('');
   const [mobileLibrary, setMobileLibrary] = useState(false);
   const [visualizerSeed, setVisualizerSeed] = useState(0);
+  const youtubePlayer = useRef<YouTubePlayerLike | null>(null);
 
   const track = tracks[current];
 
@@ -173,16 +291,20 @@ export default function HomePage() {
     setCurrent(index);
     setProgress(0);
     setDuration(0);
+    setPlaying(false);
     window.setTimeout(() => void playTrack(index), 0);
   };
 
   const playTrack = async (index = current) => {
     const selected = tracks[index];
     setCurrent(index);
-    if (selected?.videoId && selected.youtubeUrl) {
+    if (selected?.videoId) {
       setPlaying(false);
-      window.open(selected.youtubeUrl, '_blank', 'noopener,noreferrer');
-      showToast('Opening the selected track on YouTube');
+      if (youtubePlayer.current) {
+        youtubePlayer.current.playVideo();
+      } else {
+        showToast('YouTube player is loading...');
+      }
       return;
     }
 
@@ -205,6 +327,20 @@ export default function HomePage() {
   };
 
   const togglePlay = async () => {
+    if (track.videoId) {
+      if (!youtubePlayer.current) {
+        showToast('YouTube player is loading...');
+        return;
+      }
+      if (playing) {
+        youtubePlayer.current.pauseVideo();
+        setPlaying(false);
+      } else {
+        youtubePlayer.current.playVideo();
+      }
+      return;
+    }
+
     if (!audio.current || !track.src) {
       showToast('Use Import Music to add a playable track');
       return;
@@ -239,7 +375,33 @@ export default function HomePage() {
 
   const seek = (value: number) => {
     setProgress(value);
+    if (track.videoId) return;
     if (audio.current && duration) audio.current.currentTime = value;
+  };
+
+  const handleYouTubeState = (state: number) => {
+    const yt = window.YT;
+    if (!yt) return;
+    if (state === yt.PlayerState.PLAYING) {
+      setPlaying(true);
+    } else if (state === yt.PlayerState.PAUSED || state === yt.PlayerState.ENDED) {
+      setPlaying(false);
+    }
+  };
+
+  const handleYouTubeError = (code: number) => {
+    setPlaying(false);
+    const message = code === 101 || code === 150
+      ? 'This YouTube video cannot be played here'
+      : code === 153
+        ? 'YouTube could not verify this player'
+        : 'This YouTube video could not be played';
+    showToast(message);
+  };
+
+  const handleYouTubeAutoplayBlocked = () => {
+    setPlaying(false);
+    showToast('Browser blocked autoplay — press PLAY');
   };
 
   const importMusic = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -292,7 +454,19 @@ export default function HomePage() {
               <div className="hero-scanline" />
               <div className="now"><div className="eq">{Array.from({ length: 5 }, (_, i) => <i key={i} />)}</div><span>{playing ? 'PLAYING NOW' : 'READY TO PLAY'}</span>{playing && <Sparkles className="now-spark" />}</div>
               <div className="hero-main">
-                <div className="art-wrap"><Cover track={track} playing={playing} /></div>
+                <div className="art-wrap">
+                  {track.videoId ? (
+                    <YouTubeEmbed
+                      videoId={track.videoId}
+                      playerRef={youtubePlayer}
+                      onStateChange={handleYouTubeState}
+                      onError={handleYouTubeError}
+                      onAutoplayBlocked={handleYouTubeAutoplayBlocked}
+                    />
+                  ) : (
+                    <Cover track={track} playing={playing} />
+                  )}
+                </div>
                 <div className="meta">
                   <div className="tag"># {track.album.toUpperCase()}</div><h3>{track.title}</h3><p>{track.artist}</p>
                   <div className="hero-actions"><button className={`icon ${liked ? 'liked' : ''}`} onClick={() => setLiked(!liked)} aria-label="Like"><Heart fill={liked ? 'currentColor' : 'none'} /></button><button className="pixel-btn" onClick={togglePlay}>{playing ? <Pause fill="currentColor" /> : <Play fill="currentColor" />} {playing ? 'PAUSE' : 'PLAY'}</button><button className="icon" aria-label="More"><MoreHorizontal /></button></div>
@@ -321,7 +495,7 @@ export default function HomePage() {
         <footer>
           <div className="footer-track"><Cover track={track} size="small" playing={playing} /><div><strong>{track.title}</strong><span>{track.artist}</span></div><button onClick={() => setLiked(!liked)} className={liked ? 'liked' : ''}><Heart fill={liked ? 'currentColor' : 'none'} /></button></div>
           <div className="controls"><div className="control-buttons"><button className={shuffle ? 'active-control' : ''} onClick={() => setShuffle(!shuffle)}><Shuffle /></button><button onClick={prev}><SkipBack fill="currentColor" /></button><button className="play" onClick={togglePlay}>{playing ? <Pause fill="currentColor" /> : <Play fill="currentColor" />}</button><button onClick={next}><SkipForward fill="currentColor" /></button><button className={repeat ? 'active-control' : ''} onClick={() => setRepeat(!repeat)}><Repeat2 /></button></div><div className="progress"><span>{formatTime(progress)}</span><input type="range" min="0" max={duration || 100} value={Math.min(progress, duration || 100)} onChange={e => seek(+e.target.value)} /><span>{duration ? formatTime(duration) : track.duration}</span></div></div>
-          <div className="volume"><button onClick={() => setVolume(volume ? 0 : 72)}>{volume ? <Volume2 /> : <VolumeX />}</button><input type="range" min="0" max="100" value={volume} onChange={e => setVolume(+e.target.value)} /></div>
+          <div className="volume"><button onClick={() => { const nextVolume = volume ? 0 : 72; setVolume(nextVolume); youtubePlayer.current?.setVolume(nextVolume); }}>{volume ? <Volume2 /> : <VolumeX />}</button><input type="range" min="0" max="100" value={volume} onChange={e => { const nextVolume = +e.target.value; setVolume(nextVolume); youtubePlayer.current?.setVolume(nextVolume); }} /></div>
         </footer>
 
         <input ref={fileInput} className="hidden-input" type="file" accept="audio/*" multiple onChange={importMusic} />
