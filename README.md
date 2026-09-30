@@ -24,6 +24,7 @@ A retro-futuristic music player built with Next.js, React, TypeScript and Supaba
 - Listening-history API
 - Playlist API
 - Search API for the database catalog
+- YouTube Data API search route using the server-side `YOUTUBE_API_KEY`
 - Server/client Supabase helpers for SSR
 
 > The current player UI is still using the local demo catalog and imported files. The database APIs are present, but the main player has not yet been fully wired to remote catalog results, persistent likes/history or cloud audio playback.
@@ -116,7 +117,13 @@ Pixel Music Player
 
 `GET /api/search?q=...`
 
-Current search queries the Supabase `tracks` table.
+Current database search queries the Supabase `tracks` table.
+
+### YouTube Search
+
+`GET /api/youtube/search?q=...`
+
+The production UI sends the search query to this server route. The route uses the server-only `YOUTUBE_API_KEY` environment variable and calls YouTube Data API `search.list` for video results. The key is never sent to the browser. Search results include YouTube video IDs, titles, channel names, thumbnails, and YouTube URLs.
 
 ### Likes
 
@@ -146,7 +153,7 @@ Current search queries the Supabase `tracks` table.
 
 ## Important catalog / streaming note
 
-The web app is designed to support **authorized** music sources. Add audio that you own, have licensed, or are otherwise authorized to distribute.
+The web app is designed to support **authorized** music sources. YouTube search is now connected through the official YouTube Data API, but the current Pixel UI still keeps its existing local HTML5 audio player unchanged. Add audio that you own, have licensed, or are otherwise authorized to distribute.
 
 The PixelMusic project contains a reverse-engineered YouTube Music / InnerTube implementation. That implementation is not the same thing as an official public YouTube Music streaming API, so this project does **not** copy its private client key or stream-extraction code into the web app.
 
@@ -163,6 +170,7 @@ The next backend phase should connect the existing player UI to:
 - play-history writes
 - playlist UI
 - database/remote search results
+- YouTube playback using an official, visible YouTube embedded player if the UI is later extended for that requirement
 - authorized cloud audio URLs
 - real album artwork from the catalog
 - persistent queue
@@ -182,6 +190,7 @@ There is also a schema/type mismatch to fix during that phase: the current demo 
 - [x] History API
 - [x] Playlist API
 - [x] Database + RLS
+- [x] Connect search box to YouTube Data API
 - [ ] Connect player UI to Supabase catalog
 - [ ] Persistent likes in the main UI
 - [ ] Persistent recently-played history
