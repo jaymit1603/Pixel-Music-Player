@@ -53,6 +53,9 @@ type YouTubePlayerLike = {
   pauseVideo: () => void;
   destroy: () => void;
   setVolume: (volume: number) => void;
+  getCurrentTime: () => number;
+  getDuration: () => number;
+  seekTo: (seconds: number, allowSeekAhead: boolean) => void;
 };
 
 type YouTubeApi = {
@@ -87,12 +90,14 @@ function YouTubeEmbed({
   onStateChange,
   onError,
   onAutoplayBlocked,
+  onReady,
 }: {
   videoId: string;
   playerRef: React.MutableRefObject<YouTubePlayerLike | null>;
   onStateChange: (state: number) => void;
   onError: (code: number) => void;
   onAutoplayBlocked: () => void;
+  onReady: (player: YouTubePlayerLike) => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [apiReady, setApiReady] = useState(Boolean(typeof window !== 'undefined' && window.YT));
@@ -146,6 +151,7 @@ function YouTubeEmbed({
         onReady: event => {
           playerRef.current = event.target;
           event.target.setVolume(72);
+          onReady(event.target);
           event.target.playVideo();
         },
         onStateChange: event => onStateChange(event.data),
@@ -160,7 +166,7 @@ function YouTubeEmbed({
       playerRef.current?.destroy();
       playerRef.current = null;
     };
-  }, [apiReady, videoId, onStateChange, onError, onAutoplayBlocked, playerRef]);
+  }, [apiReady, videoId, onStateChange, onError, onAutoplayBlocked, onReady, playerRef]);
 
   return <div ref={containerRef} className="youtube-player" aria-label="YouTube player" />;
 }
@@ -182,6 +188,10 @@ export default function HomePage() {
   const [mobileLibrary, setMobileLibrary] = useState(false);
   const [visualizerSeed, setVisualizerSeed] = useState(0);
   const youtubePlayer = useRef<YouTubePlayerLike | null>(null);
+  const repeatRef = useRef(repeat);
+  const nextRef = useRef<() => void>(() => undefined);
+
+  repeatRef.current = repeat;
 
   const track = tracks[current];
 
@@ -288,11 +298,12 @@ export default function HomePage() {
   };
 
   const select = (index: number) => {
+    const selected = tracks[index];
     setCurrent(index);
     setProgress(0);
     setDuration(0);
     setPlaying(false);
-    window.setTimeout(() => void playTrack(index), 0);
+    if (!selected?.videoId) window.setTimeout(() => void playTrack(index), 0);
   };
 
   const playTrack = async (index = current) => {
@@ -356,36 +367,66 @@ export default function HomePage() {
   const next = () => {
     if (!tracks.length) return;
     const index = shuffle ? Math.floor(Math.random() * tracks.length) : (current + 1) % tracks.length;
+    const selected = tracks[index];
     setCurrent(index);
     setProgress(0);
-    window.setTimeout(() => void playTrack(index), 0);
+    setDuration(0);
+    setPlaying(false);
+    if (!selected?.videoId) window.setTimeout(() => void playTrack(index), 0);
   };
 
+  nextRef.current = next;
+
   const prev = () => {
-    if (!audio.current) return;
-    if (audio.current.currentTime > 3) {
+    if (track.videoId && youtubePlayer.current) {
+      if (youtubePlayer.current.getCurrentTime() > 3) {
+        youtubePlayer.current.seekTo(0, true);
+        return;
+      }
+    } else if (audio.current && audio.current.currentTime > 3) {
       audio.current.currentTime = 0;
       return;
     }
+
     const index = (current - 1 + tracks.length) % tracks.length;
+    const selected = tracks[index];
     setCurrent(index);
     setProgress(0);
-    window.setTimeout(() => void playTrack(index), 0);
+    setDuration(0);
+    setPlaying(false);
+    if (!selected?.videoId) window.setTimeout(() => void playTrack(index), 0);
   };
 
   const seek = (value: number) => {
     setProgress(value);
-    if (track.videoId) return;
+    if (track.videoId) {
+      youtubePlayer.current?.seekTo(value, false);
+      return;
+    }
     if (audio.current && duration) audio.current.currentTime = value;
   };
+
+  const handleYouTubeReady = useCallback((player: YouTubePlayerLike) => {
+    const nextDuration = player.getDuration();
+    if (Number.isFinite(nextDuration) && nextDuration > 0) setDuration(nextDuration);
+  }, []);
 
   const handleYouTubeState = useCallback((state: number) => {
     const yt = window.YT;
     if (!yt) return;
     if (state === yt.PlayerState.PLAYING) {
       setPlaying(true);
-    } else if (state === yt.PlayerState.PAUSED || state === yt.PlayerState.ENDED) {
+    } else if (state === yt.PlayerState.PAUSED) {
       setPlaying(false);
+    } else if (state === yt.PlayerState.ENDED) {
+      setProgress(0);
+      if (repeatRef.current) {
+        youtubePlayer.current?.seekTo(0, true);
+        youtubePlayer.current?.playVideo();
+      } else {
+        setPlaying(false);
+        nextRef.current();
+      }
     }
   }, []);
 
@@ -403,6 +444,21 @@ export default function HomePage() {
     setPlaying(false);
     showToast('Browser blocked autoplay — press PLAY');
   }, []);
+
+  useEffect(() => {
+    if (!track.videoId || !youtubePlayer.current) return;
+
+    const timer = window.setInterval(() => {
+      const player = youtubePlayer.current;
+      if (!player) return;
+      const currentTime = player.getCurrentTime();
+      const nextDuration = player.getDuration();
+      if (Number.isFinite(currentTime)) setProgress(currentTime);
+      if (Number.isFinite(nextDuration) && nextDuration > 0) setDuration(nextDuration);
+    }, 250);
+
+    return () => window.clearInterval(timer);
+  }, [track.videoId, playing]);
 
   const importMusic = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
@@ -462,6 +518,7 @@ export default function HomePage() {
                       onStateChange={handleYouTubeState}
                       onError={handleYouTubeError}
                       onAutoplayBlocked={handleYouTubeAutoplayBlocked}
+                      onReady={handleYouTubeReady}
                     />
                   ) : (
                     <Cover track={track} playing={playing} />
