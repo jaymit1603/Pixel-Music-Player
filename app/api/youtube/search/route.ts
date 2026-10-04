@@ -14,6 +14,11 @@ function parseDuration(value: string | undefined) {
   return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}`;
 }
 
+type VideoDetails = {
+  duration: string;
+  embeddable: boolean;
+};
+
 export async function GET(request: NextRequest) {
   const q = request.nextUrl.searchParams.get('q')?.trim() ?? '';
   if (!q) return NextResponse.json({ tracks: [] });
@@ -26,10 +31,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Keep search focused on actual music instead of movies, shorts, vlogs,
-  // interviews and unrelated videos. The UI stays exactly the same.
   const musicQuery = `${q} official audio`;
-
   const params = new URLSearchParams({
     part: 'snippet',
     q: musicQuery,
@@ -48,7 +50,6 @@ export async function GET(request: NextRequest) {
       `https://www.googleapis.com/youtube/v3/search?${params.toString()}`,
       { cache: 'no-store' }
     );
-
     const data = await response.json();
 
     if (!response.ok) {
@@ -77,9 +78,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const details = new Map(
-      (videoData.items ?? []).map((item: any) => [
-        item.id,
+    const details = new Map<string, VideoDetails>(
+      (videoData.items ?? []).map((item: any): [string, VideoDetails] => [
+        item.id as string,
         {
           duration: parseDuration(item.contentDetails?.duration),
           embeddable: item.status?.embeddable !== false,
