@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from 'react';
 import { createClient } from '../../lib/supabase/client';
-import { Disc3, LogIn, UserPlus, ArrowLeft, Chrome } from 'lucide-react';
+import { Disc3, LogIn, UserPlus, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AuthPage() {
@@ -49,7 +49,7 @@ export default function AuthPage() {
         <p className="auth-copy">Sync likes, playlists and listening history across devices.</p>
 
         <button className="auth-google" type="button" onClick={signInWithGoogle}>
-          <Chrome /> Continue with Google
+          <span aria-hidden="true" style={{ fontWeight: 800, fontSize: 18 }}>G</span> Continue with Google
         </button>
         <div className="auth-divider"><span>OR</span></div>
 
