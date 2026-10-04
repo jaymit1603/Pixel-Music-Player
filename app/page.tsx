@@ -141,12 +141,7 @@ function YouTubeEmbed({
       width: 240,
       height: 200,
       videoId,
-      playerVars: {
-        autoplay: 1,
-        controls: 1,
-        playsinline: 1,
-        origin: window.location.origin,
-      },
+      playerVars: { autoplay: 1, controls: 1, playsinline: 1, origin: window.location.origin },
       events: {
         onReady: event => {
           playerRef.current = event.target;
@@ -161,7 +156,6 @@ function YouTubeEmbed({
     });
 
     playerRef.current = player;
-
     return () => {
       playerRef.current?.destroy();
       playerRef.current = null;
@@ -192,372 +186,125 @@ export default function HomePage() {
   const nextRef = useRef<() => void>(() => undefined);
 
   repeatRef.current = repeat;
-
   const track = tracks[current];
 
-  const filtered = useMemo(
-    () => tracks.filter(t => `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(query.toLowerCase())),
-    [tracks, query]
-  );
+  const filtered = useMemo(() => tracks.filter(t => `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(query.toLowerCase())), [tracks, query]);
 
-  useEffect(() => {
-    if (audio.current) audio.current.volume = volume / 100;
-  }, [volume]);
-
-  useEffect(() => {
-    if (!playing) return;
-    const timer = window.setInterval(() => setVisualizerSeed(v => v + 1), 150);
-    return () => window.clearInterval(timer);
-  }, [playing]);
+  useEffect(() => { if (audio.current) audio.current.volume = volume / 100; }, [volume]);
+  useEffect(() => { if (!playing) return; const timer = window.setInterval(() => setVisualizerSeed(v => v + 1), 150); return () => window.clearInterval(timer); }, [playing]);
 
   useEffect(() => {
     const el = audio.current;
     if (!el) return;
     const onTime = () => setProgress(el.currentTime);
     const onLoaded = () => setDuration(el.duration);
-    const onEnded = () => {
-      if (repeat) {
-        el.currentTime = 0;
-        void el.play();
-      } else {
-        next();
-      }
-    };
-    el.addEventListener('timeupdate', onTime);
-    el.addEventListener('loadedmetadata', onLoaded);
+    const onEnded = () => { if (repeat) { el.currentTime = 0; void el.play(); } else next(); };
     const onPlay = () => setPlaying(true);
     const onPause = () => setPlaying(false);
     const onError = () => { setPlaying(false); showToast('This audio file could not be played'); };
-    el.addEventListener('ended', onEnded);
-    el.addEventListener('play', onPlay);
-    el.addEventListener('pause', onPause);
-    el.addEventListener('error', onError);
-    return () => {
-      el.removeEventListener('timeupdate', onTime);
-      el.removeEventListener('loadedmetadata', onLoaded);
-      el.removeEventListener('ended', onEnded);
-      el.removeEventListener('play', onPlay);
-      el.removeEventListener('pause', onPause);
-      el.removeEventListener('error', onError);
-    };
+    el.addEventListener('timeupdate', onTime); el.addEventListener('loadedmetadata', onLoaded); el.addEventListener('ended', onEnded); el.addEventListener('play', onPlay); el.addEventListener('pause', onPause); el.addEventListener('error', onError);
+    return () => { el.removeEventListener('timeupdate', onTime); el.removeEventListener('loadedmetadata', onLoaded); el.removeEventListener('ended', onEnded); el.removeEventListener('play', onPlay); el.removeEventListener('pause', onPause); el.removeEventListener('error', onError); };
   }, [repeat, current]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        document.querySelector<HTMLInputElement>('.search input')?.focus();
-      }
-      if (event.code === 'Space' && document.activeElement?.tagName !== 'INPUT') {
-        event.preventDefault();
-        togglePlay();
-      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); document.querySelector<HTMLInputElement>('.search input')?.focus(); }
+      if (event.code === 'Space' && document.activeElement?.tagName !== 'INPUT') { event.preventDefault(); togglePlay(); }
       if (event.altKey && event.key === 'ArrowRight') next();
       if (event.altKey && event.key === 'ArrowLeft') prev();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
   });
 
-  const showToast = (message: string) => {
-    setToast(message);
-    window.setTimeout(() => setToast(''), 2200);
+  const showToast = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 2200); };
+
+  const syncLike = async (nextLiked: boolean) => {
+    const previous = liked;
+    setLiked(nextLiked);
+    try {
+      const response = await fetch('/api/likes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId: String(track.id), liked: nextLiked }) });
+      const data = await response.json();
+      if (!response.ok) { setLiked(previous); showToast(data?.error ?? 'Could not update like'); return; }
+      showToast(nextLiked ? 'Added to Liked Songs' : 'Removed from Liked Songs');
+    } catch { setLiked(previous); showToast('Could not save your like'); }
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    setLiked(false);
+    if (!track) return;
+    fetch(`/api/likes?trackId=${encodeURIComponent(String(track.id))}`)
+      .then(async response => ({ ok: response.ok, data: await response.json() }))
+      .then(({ ok, data }) => { if (!cancelled && ok) setLiked(Boolean(data?.liked)); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [track?.id]);
 
   const searchYouTube = async () => {
     const q = query.trim();
-    if (!q) {
-      showToast('Type a song, artist, or album first');
-      return;
-    }
-
+    if (!q) { showToast('Type a song, artist, or album first'); return; }
     showToast('Searching YouTube...');
     try {
-      const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(q)}`);
-      const data = await response.json();
-
-      if (!response.ok) {
-        showToast(data?.error ?? 'YouTube search failed');
-        return;
-      }
-
+      const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(q)}`); const data = await response.json();
+      if (!response.ok) { showToast(data?.error ?? 'YouTube search failed'); return; }
       const results = Array.isArray(data.tracks) ? data.tracks as Track[] : [];
-      setTracks(results);
-      setCurrent(0);
-      setProgress(0);
-      setDuration(0);
-
-      if (!results.length) {
-        showToast('No YouTube results found');
-      } else {
-        showToast(`${results.length} YouTube results loaded`);
-      }
-    } catch {
-      showToast('Could not connect to YouTube search');
-    }
+      setTracks(results); setCurrent(0); setProgress(0); setDuration(0); setPlaying(false);
+      if (!results.length) showToast('No YouTube results found'); else showToast(`${results.length} YouTube results loaded`);
+    } catch { showToast('Could not connect to YouTube search'); }
   };
 
-  const select = (index: number) => {
-    const selected = tracks[index];
-    setCurrent(index);
-    setProgress(0);
-    setDuration(0);
-    setPlaying(false);
-    if (!selected?.videoId) window.setTimeout(() => void playTrack(index), 0);
-  };
+  const select = (index: number) => { const selected = tracks[index]; setCurrent(index); setProgress(0); setDuration(0); setPlaying(false); if (!selected?.videoId) window.setTimeout(() => void playTrack(index), 0); };
 
   const playTrack = async (index = current) => {
-    const selected = tracks[index];
-    setCurrent(index);
-    if (selected?.videoId) {
-      setPlaying(false);
-      if (youtubePlayer.current) {
-        youtubePlayer.current.playVideo();
-      } else {
-        showToast('YouTube player is loading...');
-      }
-      return;
-    }
-
-    if (!selected?.src || !audio.current) {
-      showToast('Import an audio file to start playback');
-      setPlaying(false);
-      return;
-    }
-    try {
-      if (audio.current.src !== selected.src) {
-        audio.current.src = selected.src;
-        audio.current.load();
-      }
-      await audio.current.play();
-      setPlaying(true);
-    } catch {
-      setPlaying(false);
-      showToast('Playback was blocked by the browser');
-    }
+    const selected = tracks[index]; setCurrent(index);
+    if (selected?.videoId) { setPlaying(false); if (youtubePlayer.current) youtubePlayer.current.playVideo(); else showToast('YouTube player is loading...'); return; }
+    if (!selected?.src || !audio.current) { showToast('Import an audio file to start playback'); setPlaying(false); return; }
+    try { if (audio.current.src !== selected.src) { audio.current.src = selected.src; audio.current.load(); } await audio.current.play(); setPlaying(true); } catch { setPlaying(false); showToast('Playback was blocked by the browser'); }
   };
 
   const togglePlay = async () => {
-    if (track.videoId) {
-      if (!youtubePlayer.current) {
-        showToast('YouTube player is loading...');
-        return;
-      }
-      if (playing) {
-        youtubePlayer.current.pauseVideo();
-        setPlaying(false);
-      } else {
-        youtubePlayer.current.playVideo();
-      }
-      return;
-    }
-
-    if (!audio.current || !track.src) {
-      showToast('Use Import Music to add a playable track');
-      return;
-    }
-    if (playing) {
-      audio.current.pause();
-      setPlaying(false);
-    } else {
-      await playTrack(current);
-    }
+    if (track.videoId) { if (!youtubePlayer.current) { showToast('YouTube player is loading...'); return; } if (playing) { youtubePlayer.current.pauseVideo(); setPlaying(false); } else youtubePlayer.current.playVideo(); return; }
+    if (!audio.current || !track.src) { showToast('Use Import Music to add a playable track'); return; }
+    if (playing) { audio.current.pause(); setPlaying(false); } else await playTrack(current);
   };
 
-  const next = () => {
-    if (!tracks.length) return;
-    const index = shuffle ? Math.floor(Math.random() * tracks.length) : (current + 1) % tracks.length;
-    const selected = tracks[index];
-    setCurrent(index);
-    setProgress(0);
-    setDuration(0);
-    setPlaying(false);
-    if (!selected?.videoId) window.setTimeout(() => void playTrack(index), 0);
-  };
-
+  const next = () => { if (!tracks.length) return; const index = shuffle ? Math.floor(Math.random() * tracks.length) : (current + 1) % tracks.length; const selected = tracks[index]; setCurrent(index); setProgress(0); setDuration(0); setPlaying(false); if (!selected?.videoId) window.setTimeout(() => void playTrack(index), 0); };
   nextRef.current = next;
 
   const prev = () => {
-    if (track.videoId && youtubePlayer.current) {
-      if (youtubePlayer.current.getCurrentTime() > 3) {
-        youtubePlayer.current.seekTo(0, true);
-        return;
-      }
-    } else if (audio.current && audio.current.currentTime > 3) {
-      audio.current.currentTime = 0;
-      return;
-    }
-
-    const index = (current - 1 + tracks.length) % tracks.length;
-    const selected = tracks[index];
-    setCurrent(index);
-    setProgress(0);
-    setDuration(0);
-    setPlaying(false);
-    if (!selected?.videoId) window.setTimeout(() => void playTrack(index), 0);
+    if (track.videoId && youtubePlayer.current) { if (youtubePlayer.current.getCurrentTime() > 3) { youtubePlayer.current.seekTo(0, true); return; } }
+    else if (audio.current && audio.current.currentTime > 3) { audio.current.currentTime = 0; return; }
+    const index = (current - 1 + tracks.length) % tracks.length; const selected = tracks[index]; setCurrent(index); setProgress(0); setDuration(0); setPlaying(false); if (!selected?.videoId) window.setTimeout(() => void playTrack(index), 0);
   };
 
-  const seek = (value: number) => {
-    setProgress(value);
-    if (track.videoId) {
-      youtubePlayer.current?.seekTo(value, false);
-      return;
-    }
-    if (audio.current && duration) audio.current.currentTime = value;
-  };
-
-  const handleYouTubeReady = useCallback((player: YouTubePlayerLike) => {
-    const nextDuration = player.getDuration();
-    if (Number.isFinite(nextDuration) && nextDuration > 0) setDuration(nextDuration);
-  }, []);
-
-  const handleYouTubeState = useCallback((state: number) => {
-    const yt = window.YT;
-    if (!yt) return;
-    if (state === yt.PlayerState.PLAYING) {
-      setPlaying(true);
-    } else if (state === yt.PlayerState.PAUSED) {
-      setPlaying(false);
-    } else if (state === yt.PlayerState.ENDED) {
-      setProgress(0);
-      if (repeatRef.current) {
-        youtubePlayer.current?.seekTo(0, true);
-        youtubePlayer.current?.playVideo();
-      } else {
-        setPlaying(false);
-        nextRef.current();
-      }
-    }
-  }, []);
-
-  const handleYouTubeError = useCallback((code: number) => {
-    setPlaying(false);
-    const message = code === 101 || code === 150
-      ? 'This YouTube video cannot be played here'
-      : code === 153
-        ? 'YouTube could not verify this player'
-        : 'This YouTube video could not be played';
-    showToast(message);
-  }, []);
-
-  const handleYouTubeAutoplayBlocked = useCallback(() => {
-    setPlaying(false);
-    showToast('Browser blocked autoplay — press PLAY');
-  }, []);
+  const seek = (value: number) => { setProgress(value); if (track.videoId) { youtubePlayer.current?.seekTo(value, false); return; } if (audio.current && duration) audio.current.currentTime = value; };
+  const handleYouTubeReady = useCallback((player: YouTubePlayerLike) => { const nextDuration = player.getDuration(); if (Number.isFinite(nextDuration) && nextDuration > 0) setDuration(nextDuration); }, []);
+  const handleYouTubeState = useCallback((state: number) => { const yt = window.YT; if (!yt) return; if (state === yt.PlayerState.PLAYING) setPlaying(true); else if (state === yt.PlayerState.PAUSED) setPlaying(false); else if (state === yt.PlayerState.ENDED) { setProgress(0); if (repeatRef.current) { youtubePlayer.current?.seekTo(0, true); youtubePlayer.current?.playVideo(); } else { setPlaying(false); nextRef.current(); } } }, []);
+  const handleYouTubeError = useCallback((code: number) => { setPlaying(false); const message = code === 101 || code === 150 ? 'This YouTube video cannot be played here' : code === 153 ? 'YouTube could not verify this player' : 'This YouTube video could not be played'; showToast(message); }, []);
+  const handleYouTubeAutoplayBlocked = useCallback(() => { setPlaying(false); showToast('Browser blocked autoplay — press PLAY'); }, []);
 
   useEffect(() => {
     if (!track.videoId || !youtubePlayer.current) return;
-
-    const timer = window.setInterval(() => {
-      const player = youtubePlayer.current;
-      if (!player) return;
-      const currentTime = player.getCurrentTime();
-      const nextDuration = player.getDuration();
-      if (Number.isFinite(currentTime)) setProgress(currentTime);
-      if (Number.isFinite(nextDuration) && nextDuration > 0) setDuration(nextDuration);
-    }, 250);
-
+    const timer = window.setInterval(() => { const player = youtubePlayer.current; if (!player) return; const currentTime = player.getCurrentTime(); const nextDuration = player.getDuration(); if (Number.isFinite(currentTime)) setProgress(currentTime); if (Number.isFinite(nextDuration) && nextDuration > 0) setDuration(nextDuration); }, 250);
     return () => window.clearInterval(timer);
   }, [track.videoId, playing]);
 
-  const importMusic = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []);
-    if (!files.length) return;
-    const imported = files.map((file, index) => ({
-      id: demoTracks.length + index + 1,
-      title: file.name.replace(/\.[^/.]+$/, ''),
-      artist: 'Local File',
-      album: 'Your Library',
-      duration: '—',
-      accent: ['#ff4d8d', '#00d9ff', '#8b6cff', '#ffd166'][index % 4],
-      src: URL.createObjectURL(file),
-      file,
-    }));
-    setTracks(prev => [...imported, ...prev]);
-    setCurrent(0);
-    setPlaying(false);
-    showToast(`${files.length} track${files.length > 1 ? 's' : ''} imported`);
-    event.target.value = '';
-  };
+  const importMusic = (event: React.ChangeEvent<HTMLInputElement>) => { const files = Array.from(event.target.files ?? []); if (!files.length) return; const imported = files.map((file, index) => ({ id: demoTracks.length + index + 1, title: file.name.replace(/\.[^/.]+$/, ''), artist: 'Local File', album: 'Your Library', duration: '—', accent: ['#ff4d8d', '#00d9ff', '#8b6cff', '#ffd166'][index % 4], src: URL.createObjectURL(file), file })); setTracks(prev => [...imported, ...prev]); setCurrent(0); setPlaying(false); showToast(`${files.length} track${files.length > 1 ? 's' : ''} imported`); event.target.value = ''; };
 
   return (
     <main>
       <div className="app-shell">
-        <header className="topbar">
-          <div className="brand"><div className="logo">PX</div><div><h1>PIXEL<span>_</span></h1><p>MUSIC PLAYER</p></div></div>
-          <div className="top-status"><i /> SYSTEM ONLINE <b>v1.1</b></div>
-          <button className="mobile-menu" onClick={() => setMobileLibrary(!mobileLibrary)}><Library /></button>
-        </header>
-
+        <header className="topbar"><div className="brand"><div className="logo">PX</div><div><h1>PIXEL<span>_</span></h1><p>MUSIC PLAYER</p></div></div><div className="top-status"><i /> SYSTEM ONLINE <b>v1.1</b></div><button className="mobile-menu" onClick={() => setMobileLibrary(!mobileLibrary)}><Library /></button></header>
         <div className="layout">
-          <aside className={`sidebar ${mobileLibrary ? 'open' : ''}`}>
-            <button className="close-mobile" onClick={() => setMobileLibrary(false)}><X /></button>
-            <nav><button className="active"><Home /> Home</button><button><Library /> Your Library</button><button><ListMusic /> Playlists</button></nav>
-            <div className="side-title">YOUR LIBRARY</div>
-            <div className="side-item"><span className="dot pink" /> Liked Songs <b>{liked ? 1 : 0}</b></div>
-            <div className="side-item"><span className="dot cyan" /> Recently Played <b>{tracks.length}</b></div>
-            <div className="side-item"><span className="dot yellow" /> Local Tracks <b>{tracks.filter(t => t.file).length}</b></div>
-            <div className="side-bottom"><button className="upload" onClick={() => fileInput.current?.click()}><Upload /> Import Music</button><small>LOCAL MODE<br />No account required</small></div>
-          </aside>
-
+          <aside className={`sidebar ${mobileLibrary ? 'open' : ''}`}><button className="close-mobile" onClick={() => setMobileLibrary(false)}><X /></button><nav><button className="active"><Home /> Home</button><button><Library /> Your Library</button><button><ListMusic /> Playlists</button></nav><div className="side-title">YOUR LIBRARY</div><div className="side-item"><span className="dot pink" /> Liked Songs <b>{liked ? 1 : 0}</b></div><div className="side-item"><span className="dot cyan" /> Recently Played <b>{tracks.length}</b></div><div className="side-item"><span className="dot yellow" /> Local Tracks <b>{tracks.filter(t => t.file).length}</b></div><div className="side-bottom"><button className="upload" onClick={() => fileInput.current?.click()}><Upload /> Import Music</button><small>LOCAL MODE<br />No account required</small></div></aside>
           <section className="content">
-            <div className="topbar-content">
-              <div><p className="eyebrow">YOUR SPACE</p><h2>Good evening<span>.</span></h2></div>
-              <label className="search"><Search /><input placeholder="Search your music..." value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void searchYouTube(); } }} /><kbd>⌘ K</kbd></label>
-            </div>
-
-            <div className={`hero ${playing ? 'playing' : ''}`}>
-              <div className="hero-scanline" />
-              <div className="now"><div className="eq">{Array.from({ length: 5 }, (_, i) => <i key={i} />)}</div><span>{playing ? 'PLAYING NOW' : 'READY TO PLAY'}</span>{playing && <Sparkles className="now-spark" />}</div>
-              <div className="hero-main">
-                <div className="art-wrap">
-                  {track.videoId ? (
-                    <YouTubeEmbed
-                      videoId={track.videoId}
-                      playerRef={youtubePlayer}
-                      onStateChange={handleYouTubeState}
-                      onError={handleYouTubeError}
-                      onAutoplayBlocked={handleYouTubeAutoplayBlocked}
-                      onReady={handleYouTubeReady}
-                    />
-                  ) : (
-                    <Cover track={track} playing={playing} />
-                  )}
-                </div>
-                <div className="meta">
-                  <div className="tag"># {track.album.toUpperCase()}</div><h3>{track.title}</h3><p>{track.artist}</p>
-                  <div className="hero-actions"><button className={`icon ${liked ? 'liked' : ''}`} onClick={() => setLiked(!liked)} aria-label="Like"><Heart fill={liked ? 'currentColor' : 'none'} /></button><button className="pixel-btn" onClick={togglePlay}>{playing ? <Pause fill="currentColor" /> : <Play fill="currentColor" />} {playing ? 'PAUSE' : 'PLAY'}</button><button className="icon" aria-label="More"><MoreHorizontal /></button></div>
-                </div>
-              </div>
-              <div className={`wave ${playing ? 'wave-playing' : ''}`}>
-                {Array.from({ length: 72 }, (_, i) => {
-                  const base = 14 + ((i * 19) % 34);
-                  const motion = playing ? 12 * Math.abs(Math.sin((i + visualizerSeed) * 0.52)) : 0;
-                  return <i key={i} style={{ height: Math.round(base + motion) }} />;
-                })}
-              </div>
-            </div>
-
-            <div className="section-head"><h3>UP NEXT</h3><span>{filtered.length} TRACKS</span></div>
-            <div className="track-list">
-              {filtered.map((t, row) => {
-                const index = tracks.findIndex(x => x.id === t.id);
-                return <button className={`track ${t.id === track.id ? 'selected' : ''}`} style={{ '--row': row } as React.CSSProperties} key={t.id} onClick={() => select(index)}><Cover track={t} size="small" playing={t.id === track.id && playing} /><div className="track-info"><strong>{t.title}</strong><span>{t.artist}</span></div><span className="album">{t.album}</span><span className="time">{t.duration}</span><span className="more">•••</span></button>;
-              })}
-              {!filtered.length && <div className="empty"><Music2 /> No tracks found</div>}
-            </div>
+            <div className="topbar-content"><div><p className="eyebrow">YOUR SPACE</p><h2>Good evening<span>.</span></h2></div><label className="search"><Search /><input placeholder="Search your music..." value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void searchYouTube(); } }} /><kbd>⌘ K</kbd></label></div>
+            <div className={`hero ${playing ? 'playing' : ''}`}><div className="hero-scanline" /><div className="now"><div className="eq">{Array.from({ length: 5 }, (_, i) => <i key={i} />)}</div><span>{playing ? 'PLAYING NOW' : 'READY TO PLAY'}</span>{playing && <Sparkles className="now-spark" />}</div><div className="hero-main"><div className="art-wrap">{track.videoId ? <YouTubeEmbed videoId={track.videoId} playerRef={youtubePlayer} onStateChange={handleYouTubeState} onError={handleYouTubeError} onAutoplayBlocked={handleYouTubeAutoplayBlocked} onReady={handleYouTubeReady} /> : <Cover track={track} playing={playing} />}</div><div className="meta"><div className="tag"># {track.album.toUpperCase()}</div><h3>{track.title}</h3><p>{track.artist}</p><div className="hero-actions"><button className={`icon ${liked ? 'liked' : ''}`} onClick={() => void syncLike(!liked)} aria-label="Like"><Heart fill={liked ? 'currentColor' : 'none'} /></button><button className="pixel-btn" onClick={togglePlay}>{playing ? <Pause fill="currentColor" /> : <Play fill="currentColor" />} {playing ? 'PAUSE' : 'PLAY'}</button><button className="icon" aria-label="More"><MoreHorizontal /></button></div></div></div><div className={`wave ${playing ? 'wave-playing' : ''}`}>{Array.from({ length: 72 }, (_, i) => { const base = 14 + ((i * 19) % 34); const motion = playing ? 12 * Math.abs(Math.sin((i + visualizerSeed) * 0.52)) : 0; return <i key={i} style={{ height: Math.round(base + motion) }} />; })}</div></div>
+            <div className="section-head"><h3>UP NEXT</h3><span>{filtered.length} TRACKS</span></div><div className="track-list">{filtered.map((t, row) => { const index = tracks.findIndex(x => x.id === t.id); return <button className={`track ${t.id === track.id ? 'selected' : ''}`} style={{ '--row': row } as React.CSSProperties} key={t.id} onClick={() => select(index)}><Cover track={t} size="small" playing={t.id === track.id && playing} /><div className="track-info"><strong>{t.title}</strong><span>{t.artist}</span></div><span className="album">{t.album}</span><span className="time">{t.duration}</span><span className="more">•••</span></button>; })}{!filtered.length && <div className="empty"><Music2 /> No tracks found</div>}</div>
           </section>
         </div>
-
-        <footer>
-          <div className="footer-track"><Cover track={track} size="small" playing={playing} /><div><strong>{track.title}</strong><span>{track.artist}</span></div><button onClick={() => setLiked(!liked)} className={liked ? 'liked' : ''}><Heart fill={liked ? 'currentColor' : 'none'} /></button></div>
-          <div className="controls"><div className="control-buttons"><button className={shuffle ? 'active-control' : ''} onClick={() => setShuffle(!shuffle)}><Shuffle /></button><button onClick={prev}><SkipBack fill="currentColor" /></button><button className="play" onClick={togglePlay}>{playing ? <Pause fill="currentColor" /> : <Play fill="currentColor" />}</button><button onClick={next}><SkipForward fill="currentColor" /></button><button className={repeat ? 'active-control' : ''} onClick={() => setRepeat(!repeat)}><Repeat2 /></button></div><div className="progress"><span>{formatTime(progress)}</span><input type="range" min="0" max={duration || 100} value={Math.min(progress, duration || 100)} onChange={e => seek(+e.target.value)} /><span>{duration ? formatTime(duration) : track.duration}</span></div></div>
-          <div className="volume"><button onClick={() => { const nextVolume = volume ? 0 : 72; setVolume(nextVolume); youtubePlayer.current?.setVolume(nextVolume); }}>{volume ? <Volume2 /> : <VolumeX />}</button><input type="range" min="0" max="100" value={volume} onChange={e => { const nextVolume = +e.target.value; setVolume(nextVolume); youtubePlayer.current?.setVolume(nextVolume); }} /></div>
-        </footer>
-
-        <input ref={fileInput} className="hidden-input" type="file" accept="audio/*" multiple onChange={importMusic} />
-        {toast && <div className="toast">{toast}</div>}
-        <audio ref={audio} />
+        <footer><div className="footer-track"><Cover track={track} size="small" playing={playing} /><div><strong>{track.title}</strong><span>{track.artist}</span></div><button onClick={() => void syncLike(!liked)} className={liked ? 'liked' : ''}><Heart fill={liked ? 'currentColor' : 'none'} /></button></div><div className="controls"><div className="control-buttons"><button className={shuffle ? 'active-control' : ''} onClick={() => setShuffle(!shuffle)}><Shuffle /></button><button onClick={prev}><SkipBack fill="currentColor" /></button><button className="play" onClick={togglePlay}>{playing ? <Pause fill="currentColor" /> : <Play fill="currentColor" />}</button><button onClick={next}><SkipForward fill="currentColor" /></button><button className={repeat ? 'active-control' : ''} onClick={() => setRepeat(!repeat)}><Repeat2 /></button></div><div className="progress"><span>{formatTime(progress)}</span><input type="range" min="0" max={duration || 100} value={Math.min(progress, duration || 100)} onChange={e => seek(+e.target.value)} /><span>{duration ? formatTime(duration) : track.duration}</span></div></div><div className="volume"><button onClick={() => { const nextVolume = volume ? 0 : 72; setVolume(nextVolume); youtubePlayer.current?.setVolume(nextVolume); }}>{volume ? <Volume2 /> : <VolumeX />}</button><input type="range" min="0" max="100" value={volume} onChange={e => { const nextVolume = +e.target.value; setVolume(nextVolume); youtubePlayer.current?.setVolume(nextVolume); }} /></div></footer>
+        <input ref={fileInput} className="hidden-input" type="file" accept="audio/*" multiple onChange={importMusic} />{toast && <div className="toast">{toast}</div>}<audio ref={audio} />
       </div>
     </main>
   );
