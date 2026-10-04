@@ -26,15 +26,20 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // Keep search focused on actual music instead of movies, shorts, vlogs,
+  // interviews and unrelated videos. The UI stays exactly the same.
+  const musicQuery = `${q} official audio`;
+
   const params = new URLSearchParams({
     part: 'snippet',
-    q,
+    q: musicQuery,
     type: 'video',
+    videoCategoryId: '10',
+    videoEmbeddable: 'true',
+    videoSyndicated: 'true',
     maxResults: '12',
     regionCode: 'IN',
     relevanceLanguage: 'en',
-    videoEmbeddable: 'true',
-    videoSyndicated: 'true',
     key,
   });
 
